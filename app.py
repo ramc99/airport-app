@@ -2,11 +2,13 @@
 from __future__ import annotations
 
 import os
+import json
+import requests
 from datetime import datetime
 from pathlib import Path
 
 from dotenv import load_dotenv
-from flask import Flask, redirect, render_template, request, url_for
+from flask import Flask, redirect, render_template, request, url_for, jsonify
 
 ROOT = Path(__file__).resolve().parent
 load_dotenv(ROOT / ".env")
@@ -15,6 +17,11 @@ import airlabs  # noqa: E402  (import after dotenv so module reads env at call t
 
 app = Flask(__name__)
 app.secret_key = os.getenv("FLASK_SECRET_KEY", "dev-only")
+
+# Cloud LLM API Configuration
+CLOUD_LLM_API_KEY = os.getenv("CLOUD_LLM_API_KEY")
+CLOUD_LLM_URL = os.getenv("CLOUD_LLM_URL", "https://openrouter.ai/api/v1/chat/completions")
+CLOUD_MODEL = os.getenv("CLOUD_MODEL", "meta-llama/llama-3-8b-instruct:free")
 
 
 def _err(message: str, status: int = 400):
@@ -241,8 +248,7 @@ def nearby_view():
 
 @app.route("/api/chat", methods=["POST"])
 def chat_api():
-    """Chatbot API endpoint using Ollama LLM for answering user queries."""
-    import httpx
+    """Chatbot API endpoint using Cloud LLM API for answering user queries."""
     
     data = request.get_json() or {}
     message = (data.get("message") or "").strip()
@@ -250,11 +256,7 @@ def chat_api():
     if not message:
         return {"response": "Please ask a question about flights, airports, airlines, schedules, delays, or routes."}
     
-    # Get Ollama configuration from environment
-    ollama_host = os.getenv("OLLAMA_HOST", "http://localhost:11434")
-    ollama_model = os.getenv("OLLAMA_MODEL", "llama3.2")
-    
-    # System prompt to guide the LLM - now includes context about available data
+    # System prompt to guide the LLM
     system_prompt = """You are a helpful airport assistant powered by AI. You help users with queries about flights, airports, airlines, schedules, delays, and routes.
 
 When answering:
@@ -265,38 +267,61 @@ When answering:
 - For delays, mention the duration and affected flights
 - For routes, list available airlines between airports
 
-You have access to general aviation knowledge. If the user needs real-time data, guide them to use the search features on the website or provide general information based on your training data.
+You have access to general aviation knowledge. Provide helpful answers based on your training data.
 """
     
+    # Check if cloud API key is configured
+    if not CLOUD_LLM_API_KEY:
+        return {"response": "Cloud LLM API key is not configured. Please set CLOUD_LLM_API_KEY in your .env file."}
+    
     try:
-        # Call Ollama API
-        async def call_ollama():
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                response = await client.post(
-                    f"{ollama_host}/api/generate",
-                    json={
-                        "model": ollama_model,
-                        "prompt": message,
-                        "system": system_prompt,
-                        "stream": False
-                    }
-                )
-                response.raise_for_status()
-                return response.json()
+        # Call Cloud LLM API (OpenRouter compatible format)
+        response = requests.post(
+            CLOUD_LLM_URL,
+            headers={
+                "Authorization": f"Bearer {CLOUD_LLM_API_KEY}",
+                "Content-Type": "application/json",
+                "HTTP-Referer": "http://localhost:5000",
+                "X-Title": "Airport App Chatbot"
+            },
+            json={
+                "model": CLOUD_MODEL,
+                "messages": [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": message}
+                ],
+                "temperature": 0.7,
+                "max_tokens": 500
+            },
+            timeout=30
+        )
+        response.raise_for_status()
+        result = response.json()
         
-        # Run async code in sync context
-        import asyncio
-        result = asyncio.run(call_ollama())
-        llm_response = result.get("response", "")
+        # Extract response from OpenRouter format
+        llm_response = result.get("choices", [{}])[0].get("message", {}).get("content", "")
+        
+        if not llm_response:
+            llm_response = "I received an empty response from the AI service. Please try rephrasing your question."
         
         return {"response": llm_response}
         
-    except httpx.ConnectError:
-        return {"response": "I'm unable to connect to the AI service right now. Please ensure Ollama is running locally (run 'ollama serve') and try again."}
+    except requests.exceptions.Timeout:
+        return {"response": "The AI service took too long to respond. Please try again."}
+    except requests.exceptions.ConnectionError:
+        return {"response": "Unable to connect to the AI service. Please check your internet connection and API configuration."}
+    except requests.exceptions.HTTPError as e:
+        error_msg = str(e)
+        if "401" in error_msg or "403" in error_msg:
+            return {"response": "Authentication failed. Please check your API key configuration."}
+        elif "429" in error_msg:
+            return {"response": "Rate limit exceeded. Please wait a moment and try again."}
+        else:
+            return {"response": f"API error occurred: {error_msg}. Please check your configuration."}
     except Exception as e:
-        app.logger.error(f"Ollama error: {e}")
-        return {"response": f"Sorry, I encountered an error processing your request. Please make sure Ollama is running with a model loaded (e.g., 'ollama pull llama3.2' then 'ollama serve')."}
+        app.logger.error(f"Cloud LLM error: {e}")
+        return {"response": f"Sorry, I encountered an error processing your request. Details: {str(e)}"}
 
 
 if __name__ == "__main__":
-    app.run(debug=True, port=5000)
+    app.run(debug=False, port=5000, threaded=True)
