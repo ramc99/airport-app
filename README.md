@@ -38,24 +38,32 @@ source venv/bin/activate  # On Windows: venv\Scripts\activate
 
 ### 3. Install Dependencies
 
+This project uses `pyproject.toml` for dependency management. Install with pip:
+
 ```bash
-pip install -r requirements.txt
+pip install -e .
 ```
 
-If `requirements.txt` doesn't exist, install the required packages manually:
+Or install dependencies manually:
 
 ```bash
-pip install flask requests python-dotenv
+pip install flask httpx python-dotenv
 ```
 
 ### 4. Environment Variables
 
-The `.env` file is already configured with the necessary API keys. If you need to modify any settings, you can edit the existing `.env` file:
+Create a `.env` file in the project root (copy from `.env.example`):
+
+```bash
+cp .env.example .env
+```
+
+Then edit `.env` and add your AirLabs API key:
 
 ```
-AIRLABS_API_KEY=<configured>
+AIRLABS_API_KEY=your_api_key_here
 AIRLABS_BASE_URL=https://airlabs.co/api/v9
-FLASK_SECRET_KEY=<configured>
+FLASK_SECRET_KEY=change-me-in-prod
 
 # Ollama LLM Configuration (optional - falls back to rule-based if not set)
 OLLAMA_HOST=http://localhost:11434
@@ -75,16 +83,6 @@ OLLAMA_MODEL=llama3.2
    ```
 
 Note: If Ollama is not configured or unavailable, the chatbot will automatically fall back to a rule-based response system.
-
-## Running the Application
-
-### Start the Server
-
-```bash
-python app.py
-```
-
-The application will start on `http://127.0.0.1:5000`
 
 ## Using the Chatbot
 
@@ -132,9 +130,9 @@ The chatbot is accessible from any page in the application:
 airport-app/
 ├── app.py              # Main Flask application with chatbot API
 ├── airlabs.py          # AirLabs API integration module
+├── pyproject.toml      # Project configuration and dependencies
 ├── static/
-│   ├── style.css       # CSS styles including chatbot styling
-│   └── ...             # Other static files
+│   └── style.css       # CSS styles including chatbot styling
 ├── templates/
 │   ├── base.html       # Base template with chatbot UI
 │   ├── index.html      # Home page
@@ -146,9 +144,7 @@ airport-app/
 │   ├── routes.html     # Route information page
 │   ├── nearby.html     # Nearby airports page
 │   └── error.html      # Error page
-├── .env                # Environment variables (API keys)
 ├── .env.example        # Example environment file
-├── requirements.txt    # Python dependencies
 └── README.md           # This file
 ```
 
@@ -174,6 +170,16 @@ The chatbot consists of three main components:
 - Intent detection using regex patterns
 - Entity extraction (flight numbers, airport codes, airline codes)
 - Integration with AirLabs API for real-time data
+
+## Running the Application
+
+Make sure you have set up your `.env` file with a valid AirLabs API key before running:
+
+```bash
+python app.py
+```
+
+The application will start on `http://127.0.0.1:5000`
 
 ## Troubleshooting
 
