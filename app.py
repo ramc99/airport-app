@@ -241,173 +241,61 @@ def nearby_view():
 
 @app.route("/api/chat", methods=["POST"])
 def chat_api():
-    """Chatbot API endpoint for answering user queries."""
-    import re
-
+    """Chatbot API endpoint using Ollama LLM for answering user queries."""
+    import httpx
+    
     data = request.get_json() or {}
     message = (data.get("message") or "").strip()
-
+    
     if not message:
         return {"response": "Please ask a question about flights, airports, airlines, schedules, delays, or routes."}
+    
+    # Get Ollama configuration from environment
+    ollama_host = os.getenv("OLLAMA_HOST", "http://localhost:11434")
+    ollama_model = os.getenv("OLLAMA_MODEL", "llama3.2")
+    
+    # System prompt to guide the LLM - now includes context about available data
+    system_prompt = """You are a helpful airport assistant powered by AI. You help users with queries about flights, airports, airlines, schedules, delays, and routes.
 
-    msg_lower = message.lower()
+When answering:
+- Be concise and informative
+- If you need specific codes (airport, airline, flight numbers), ask the user politely
+- Use IATA codes (3 letters for airports, 2 letters for airlines) when possible
+- For flight status, mention departure/arrival airports and current status
+- For delays, mention the duration and affected flights
+- For routes, list available airlines between airports
 
-    # Helper to extract codes (3-letter airport, 2-letter airline, flight numbers)
-    def extract_airport_code(text):
-        # Look for 3-letter uppercase codes or common airport names
-        match = re.search(r'\b([A-Z]{3})\b', text)
-        if match:
-            return match.group(1)
-        # Check for known airport names
-        airport_names = {
-            'jfk': 'JFK', 'lhr': 'LHR', 'cdg': 'CDG', 'hnd': 'HND', 'dxb': 'DXB',
-            'sin': 'SIN', 'lax': 'LAX', 'fra': 'FRA', 'ord': 'ORD', 'dfw': 'DFW',
-            'den': 'DEN', 'sfo': 'SFO', 'sea': 'SEA', 'las': 'LAS', 'mco': 'MCO',
-            'mia': 'MIA', 'bos': 'BOS', 'ewr': 'EWR', 'phx': 'PHX', 'iah': 'IAH',
-        }
-        for name, code in airport_names.items():
-            if name in text_lower:
-                return code
-        return None
-
-    def extract_airline_code(text):
-        match = re.search(r'\b([A-Z]{2})\b', text)
-        if match:
-            return match.group(1)
-        return None
-
-    def extract_flight_number(text):
-        # Match patterns like BA178, AA100, etc.
-        match = re.search(r'\b([A-Z]{2}\d{1,4})\b', text.upper())
-        if match:
-            return match.group(1)
-        return None
-
-    # Determine intent
-    if any(word in msg_lower for word in ['flight', 'flights', 'status']):
-        flight_code = extract_flight_number(message)
-        if flight_code:
-            try:
-                flight = airlabs.flight(flight_iata=flight_code)
-                if flight:
-                    status = flight.get('status', 'unknown')
-                    dep = flight.get('dep_iata', 'N/A')
-                    arr = flight.get('arr_iata', 'N/A')
-                    alt = flight.get('alt', 'N/A')
-                    speed = flight.get('speed', 'N/A')
-                    return {
-                        "response": f"Flight {flight_code}: Status is {status}. From {dep} to {arr}. Altitude: {alt}, Speed: {speed}."
+You have access to general aviation knowledge. If the user needs real-time data, guide them to use the search features on the website or provide general information based on your training data.
+"""
+    
+    try:
+        # Call Ollama API
+        async def call_ollama():
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                response = await client.post(
+                    f"{ollama_host}/api/generate",
+                    json={
+                        "model": ollama_model,
+                        "prompt": message,
+                        "system": system_prompt,
+                        "stream": False
                     }
-                else:
-                    return {"response": f"No live data found for flight {flight_code}."}
-            except Exception:
-                return {"response": f"Could not retrieve flight information for {flight_code}."}
-        else:
-            return {"response": "Please specify a flight number (e.g., BA178, AA100)."}
-
-    elif any(word in msg_lower for word in ['airport', 'airports']):
-        airport_code = extract_airport_code(message)
-        if airport_code:
-            try:
-                airport = airlabs.airport(iata=airport_code)
-                if airport:
-                    name = airport.get('name', 'Unknown')
-                    city = airport.get('city', 'Unknown')
-                    country = airport.get('country', 'Unknown')
-                    return {
-                        "response": f"{airport_code} - {name}, located in {city}, {country}."
-                    }
-                else:
-                    return {"response": f"No airport found with code {airport_code}."}
-            except Exception:
-                return {"response": f"Could not retrieve airport information for {airport_code}."}
-        else:
-            return {"response": "Please specify an airport code (e.g., JFK, LHR) or airport name."}
-
-    elif any(word in msg_lower for word in ['airline', 'airlines']):
-        airline_code = extract_airline_code(message)
-        if airline_code:
-            try:
-                airline = airlabs.airline(iata=airline_code)
-                if airline:
-                    name = airline.get('name', 'Unknown')
-                    country = airline.get('country', 'Unknown')
-                    return {
-                        "response": f"{airline_code} - {name}, based in {country}."
-                    }
-                else:
-                    return {"response": f"No airline found with code {airline_code}."}
-            except Exception:
-                return {"response": f"Could not retrieve airline information for {airline_code}."}
-        else:
-            return {"response": "Please specify an airline code (e.g., BA, AA, DL)."}
-
-    elif any(word in msg_lower for word in ['delay', 'delays', 'delayed']):
-        airport_code = extract_airport_code(message)
-        if airport_code:
-            try:
-                delays = airlabs.delays(dep_iata=airport_code, min_delay_min=30, limit=5)
-                if delays and len(delays) > 0:
-                    delay_list = [f"{d.get('flight_iata', 'N/A')} ({d.get('delayed', 0)} min)" for d in delays[:3]]
-                    return {
-                        "response": f"Current delays at {airport_code}: {', '.join(delay_list)}."
-                    }
-                else:
-                    return {"response": f"No significant delays reported at {airport_code}."}
-            except Exception:
-                return {"response": f"Could not retrieve delay information for {airport_code}."}
-        else:
-            return {"response": "Please specify an airport code to check for delays."}
-
-    elif any(word in msg_lower for word in ['schedule', 'schedules']):
-        dep = extract_airport_code(message)
-        arr_match = re.search(r'(?:to|→)\s*([A-Z]{3})', message.upper())
-        arr = arr_match.group(1) if arr_match else None
+                )
+                response.raise_for_status()
+                return response.json()
         
-        if dep or arr:
-            try:
-                schedules = airlabs.schedules(dep_iata=dep, arr_iata=arr, limit=5)
-                if schedules and len(schedules) > 0:
-                    schedule_info = [f"{s.get('flight_iata', 'N/A')} to {s.get('arr_iata', 'N/A')}" for s in schedules[:3]]
-                    return {
-                        "response": f"Upcoming flights: {', '.join(schedule_info)}."
-                    }
-                else:
-                    return {"response": "No scheduled flights found matching your criteria."}
-            except Exception:
-                return {"response": "Could not retrieve schedule information."}
-        else:
-            return {"response": "Please specify a departure or arrival airport code."}
-
-    elif any(word in msg_lower for word in ['route', 'routes']):
-        dep = extract_airport_code(message)
-        arr_match = re.search(r'(?:to|→)\s*([A-Z]{3})', message.upper())
-        arr = arr_match.group(1) if arr_match else None
+        # Run async code in sync context
+        import asyncio
+        result = asyncio.run(call_ollama())
+        llm_response = result.get("response", "")
         
-        if dep and arr:
-            try:
-                routes = airlabs.routes(dep_iata=dep, arr_iata=arr, limit=5)
-                if routes and len(routes) > 0:
-                    airlines = set(r.get('airline_iata', 'N/A') for r in routes)
-                    return {
-                        "response": f"Airlines flying from {dep} to {arr}: {', '.join(airlines)}."
-                    }
-                else:
-                    return {"response": f"No direct routes found from {dep} to {arr}."}
-            except Exception:
-                return {"response": "Could not retrieve route information."}
-        else:
-            return {"response": "Please specify both departure and arrival airport codes (e.g., 'routes from JFK to LHR')."}
-
-    elif any(word in msg_lower for word in ['hello', 'hi', 'hey', 'help']):
-        return {
-            "response": "Hello! I can help you with flight information, airport details, airline info, schedules, delays, and routes. Try asking: 'What's the status of BA178?' or 'Show me delays at JFK'."
-        }
-
-    else:
-        return {
-            "response": "I'm here to help with airport and flight information. You can ask about flights, airports, airlines, schedules, delays, or routes. For example: 'What flights are at JFK?' or 'Show me delays at LHR'."
-        }
+        return {"response": llm_response}
+        
+    except httpx.ConnectError:
+        return {"response": "I'm unable to connect to the AI service right now. Please ensure Ollama is running locally (run 'ollama serve') and try again."}
+    except Exception as e:
+        app.logger.error(f"Ollama error: {e}")
+        return {"response": f"Sorry, I encountered an error processing your request. Please make sure Ollama is running with a model loaded (e.g., 'ollama pull llama3.2' then 'ollama serve')."}
 
 
 if __name__ == "__main__":
