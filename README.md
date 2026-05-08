@@ -48,26 +48,19 @@ If `requirements.txt` doesn't exist, install the required packages manually:
 pip install flask requests python-dotenv
 ```
 
-### 4. Set Up Environment Variables
+### 4. Environment Variables
 
-Create a `.env` file in the project root directory:
-
-```bash
-cp .env.example .env
-```
-
-Edit the `.env` file and add your API keys:
+The `.env` file is already configured with the necessary API keys. If you need to modify any settings, you can edit the existing `.env` file:
 
 ```
-AIRLABS_API_KEY=your_api_key_here
-FLASK_SECRET_KEY=your_secret_key
+AIRLABS_API_KEY=<configured>
+AIRLABS_BASE_URL=https://airlabs.co/api/v9
+FLASK_SECRET_KEY=<configured>
 
 # Ollama LLM Configuration (optional - falls back to rule-based if not set)
 OLLAMA_HOST=http://localhost:11434
 OLLAMA_MODEL=llama3.2
 ```
-
-You can get a free API key from [AirLabs](https://airlabs.co/).
 
 **For AI-powered chatbot responses:**
 
@@ -92,13 +85,6 @@ python app.py
 ```
 
 The application will start on `http://127.0.0.1:5000`
-
-### Access the Application
-
-Open your web browser and navigate to:
-```
-http://127.0.0.1:5000
-```
 
 ## Using the Chatbot
 
