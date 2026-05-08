@@ -18,6 +18,7 @@ A Flask-based airport information application with an integrated AI chatbot for 
 - Python 3.8 or higher
 - pip (Python package manager)
 - An API key from [AirLabs](https://airlabs.co/)
+- (Optional) Ollama for AI-powered chatbot responses
 
 ## Installation
 
@@ -55,13 +56,32 @@ Create a `.env` file in the project root directory:
 cp .env.example .env
 ```
 
-Edit the `.env` file and add your AirLabs API key:
+Edit the `.env` file and add your API keys:
 
 ```
 AIRLABS_API_KEY=your_api_key_here
+FLASK_SECRET_KEY=your_secret_key
+
+# Ollama LLM Configuration (optional - falls back to rule-based if not set)
+OLLAMA_HOST=http://localhost:11434
+OLLAMA_MODEL=llama3.2
 ```
 
 You can get a free API key from [AirLabs](https://airlabs.co/).
+
+**For AI-powered chatbot responses:**
+
+1. Install Ollama from [https://ollama.ai/](https://ollama.ai/)
+2. Pull a language model:
+   ```bash
+   ollama pull llama3.2
+   ```
+3. Start Ollama server:
+   ```bash
+   ollama serve
+   ```
+
+Note: If Ollama is not configured or unavailable, the chatbot will automatically fall back to a rule-based response system.
 
 ## Running the Application
 
@@ -163,6 +183,8 @@ The chatbot consists of three main components:
 
 ### 3. Backend API (`app.py`)
 - `/api/chat` endpoint for processing queries
+- **Ollama LLM Integration**: Uses Ollama API for natural language understanding and generation
+- **Fallback System**: Automatically falls back to rule-based responses if Ollama is unavailable
 - Intent detection using regex patterns
 - Entity extraction (flight numbers, airport codes, airline codes)
 - Integration with AirLabs API for real-time data
@@ -186,7 +208,13 @@ The chatbot consists of three main components:
 - Check your internet connection
 - Verify the API key is correctly set in the `.env` file
 
-**4. No data showing:**
+**4. Ollama not responding:**
+- Ensure Ollama is installed and running: `ollama serve`
+- Check if the model is pulled: `ollama list`
+- Verify `OLLAMA_HOST` and `OLLAMA_MODEL` in your `.env` file
+- The chatbot will fall back to rule-based responses if Ollama is unavailable
+
+**5. No data showing:**
 - The AirLabs API may have rate limits on free plans
 - Check if the flight/airport/airline code exists
 - Verify the API response in the browser console
